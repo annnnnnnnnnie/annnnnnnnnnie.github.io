@@ -1,17 +1,20 @@
 ---
 layout: post
 title: "Running RISC-V with Hypervisor Extension on Firesim Using Rocket Chip"
-categories: RISC-V Virtualization
+categories: RISC-V Virtualization Firesim
 ---
 
 # Environment
 Firesim 1.16.0
 
 # Recap
-In the previous post, we boot a linux hypervisor + guest on QEMU. In this post, we will do the same thing with Firesim, which allows for FPGA-accelearted cycle accurate simulation.
+In the previous post, we boot a linux hypervisor + guest on QEMU. In this post, we will do the same thing with firesim and rocket chip, which allows for FPGA-accelearted cycle accurate simulation.
 
 # Firesim, Chipyard, Firemarshal and Rocket Chip.
-
+- Firesim: the framework for agile achitecture development, testing and evaluation.
+- Chipyard: contains generators for different chips, such as rocket chip and boom.
+- Firemarshal: helps to setup linux images and rootfs for simulation.
+- Rocket Chip: A generator that can create hardware descriptions of different flavours of an in-order CPU. More importantly, it implements the hypervisor extension. 
 
 # Running Linux Hypervisor and Linux Guest on Firesim
 
@@ -30,7 +33,8 @@ class QuadRocketHypConfig extends Config(
 new freechips.rocketchip.subsystem.WithHypervisor ++
 new QuadRocketConfig)
 ```
-Note: To check what subsystems are available, see `firesim/target-design/chipyard/generators/rocket-chip/src/main/scala/subsystem/Configs.scala`
+
+> Note: To check what subsystems are available, see `firesim/target-design/chipyard/generators/rocket-chip/src/main/scala/subsystem/Configs.scala`
 
 Then, define FPGA config at `firesim/target-design/chipyard/generators/firechip/src/main/scala/TargetConfigs.scala`:
 ```scala
@@ -55,7 +59,8 @@ firesim_rocket_h_quadcore_no_nic_l2_llc4mb_ddr3_ours:
     metasim_customruntimeconfig: null
     bit_builder_recipe: bit-builder-recipes/f1.yaml
 ```
-Note: The `TARGET_CONFIG` is parsed following the syntatic rules described [here](https://docs.fires.im/en/1.16.0/Advanced-Usage/Generating-Different-Targets.html#specifying-a-target-instance).
+
+> Note: The `TARGET_CONFIG` is parsed following the syntatic rules described [here](https://docs.fires.im/en/1.16.0/Advanced-Usage/Generating-Different-Targets.html#specifying-a-target-instance).
 
 Then turn on build in `firesim/deploy/config_build.yaml`.
 
@@ -139,13 +144,15 @@ $ firesim terminaterunfarm
 ``` 
 and input `yes`.
 
-Check from EC2 management console that the instance has terminated, and then stop (Note: not terminate) the manager instance if you decide to finish today's work.
+> Check from EC2 management console that the instance has terminated, and then stop (Note: not terminate) the manager instance if you decide to finish today's work.
 
 
 ## Boot Linux Hypervisor and Linux Guest
 Now we can run our custom workload, which will be based on `br-base.json`, with additional files `Image`, `lkvm-static` and `kvm.ko`.
 
-First, 
+First, set firemarshal workload search path by editing ``:
+```
+```
 
 
 # References
@@ -157,7 +164,7 @@ First,
 # Appendix
 
 ## Firesim Conda environment
-In the firesim conda environment, we are using a specific set of compiler toolchains.
+In the firesim conda environment, we are using a specific set of compiler toolchains. Specifically, the GCC in the environment uses its own sysroot, which can be located with `gcc --print-sysroot`. This means that `apt install` will not install packages to this sysroot.
 
 ## Firemarshal and QEMU
 We can test the firemarshal created workload with QEMU on the manager instance and verify its functional correctness. However, The pre-built qemu5.0 that ships with firesim conda env does not support hypervisor extension. I tried to compile a QEMU on the manager instance, eventually succeeded but still unable to run the workload. 
@@ -165,4 +172,4 @@ We can test the firemarshal created workload with QEMU on the manager instance a
 The qemu command to start the workload can be found with `marshal -v launch workload_name`.
 
 ## Screen
-- If you press `ctrl-a` then `ctrl-x` on screen, then you will lock the screen session. You need to unlock it with the password of the current user `centos`, which you don't know. In this situation we usually sigh and use `firesim kill` to stop the simulation. (Note: `ctrl-a` then `ctrl-d` to detach from screen, leave the program running.) (`ctrl-a` then `ctrl-x` on QEMU is to terminate QEMU.) 
+- If you press `ctrl-a` then `ctrl-x` on screen, then you will lock the screen session. You need to unlock it with the password of the current user `centos`, which you don't know. In this situation we usually sigh and use `firesim kill` to stop the simulation. (Note: `ctrl-a` then `ctrl-d` to detach from screen, leaving the program running.) (`ctrl-a` then `ctrl-x` on QEMU is to terminate QEMU.) 

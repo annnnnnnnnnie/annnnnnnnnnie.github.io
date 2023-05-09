@@ -24,9 +24,14 @@ We will follow the following steps to cross compile the linux hypervisor and gue
 
 ## Environment
 Ubuntu 20.04 with sudo rights.
+```
+$ apt install gcc make g++ rsync unzip wget
+```
 
 ## Getting the RISC-V Cross Compilation Toolchain
 To cross compile for RISC-V linux, we need to use the cross compilation toolchain. It can be downloaded from [github](https://github.com/riscv-collab/riscv-gnu-toolchain). For our use case, it is suffice to download one from their releases, instead of compiling from source. The releases can be found [here](https://github.com/riscv-collab/riscv-gnu-toolchain/tags). We will look for one with name `riscv64-glibc-ubuntu-20.04-xxxxx-tar.gz`. You can download with `wget` and unzip with `tar -xvzf`.
+
+> Note: If your OS is not Ubuntu20.04, you should look for a compatible release [here](https://github.com/riscv-collab/riscv-gnu-toolchain/tags).
 
 ```
 $ wget https://github.com/riscv-collab/riscv-gnu-toolchain/releases/download/2023.04.29/riscv64-glibc-ubuntu-20.04-nightly-2023.04.29-nightly.tar.gz
@@ -72,7 +77,7 @@ There are many ways to build a linux kernel and a rootfs. Using buildroot is one
 Get [Buildroot](https://buildroot.org/):
 [Download build root](https://buildroot.org/download.html)
 
-Building linux kernel, busybox or buildroot uses similar workflow. First `make xxxconfig` to generate a `.config` file. Then `make -j $(nproc)` to actually build it.
+> Building linux kernel, busybox or buildroot use similar workflows. First `make xxxconfig` to generate a `.config` file. Then `make -j $(nproc)` to actually build it.
 
 First, make sure that the `riscv-gnu-toolchain` is on our `PATH`.
 ```
@@ -105,7 +110,7 @@ $ make -j $(nproc)
 
 The kernel source as well as built items can be found under `./output/build/linux-?.?`. The kernel image will be under `arch/riscv/boot/Image` and the kvm module will be under `arch/riscv/kvm/kvm.ko`.
 
-Note: to rebuild the linux kernel and kernel modules, use (under buildroot folder):
+> Note: to rebuild the linux kernel and kernel modules, use (under buildroot folder):
 ```
 $ make -j $(nproc) linux-rebuild
 ```
@@ -143,6 +148,8 @@ $ make libfdt
 $ make NO_PYTHON=1 NO_YAML=1 DESTDIR=$SYSROOT PREFIX=/usr LIBDIR=/usr/lib64/lp64d install-lib install-includes
 ```
 
+> Note: check if $SYSROOT is pointing to the correct location. It should be something like `.../riscv/sysroot/`.
+
 Then clone and build kvmtool
 ```
 $ git clone https://git.kernel.org/pub/scm/linux/kernel/git/will/kvmtool.git
@@ -154,6 +161,8 @@ $ export CROSS_COMPILE=riscv64-unknown-linux-gnu-
 $ make lkvm-static
 ```
 
+> Note: You can edit the Makefile and point CC, LD OBJCOPY to the absolute location of the riscv toolchain cc, ld and objcopy.
+
 ## Put everything together
 
 Recall that we have `HOST_OVERLAY_DIR` which allows us to put files onto the filesystem that the linux hypervisor is using. To boot a linux guest on top of it, we need some additional files.
@@ -163,7 +172,7 @@ Recall that we have `HOST_OVERLAY_DIR` which allows us to put files onto the fil
 
 Copy the abovementioned files to `HOST_OVERLAY_DIR` and rebuild using buildroot.
 
-Note: Use `find . -name linux -type d` in buildroot to locate the linux build dir. Copy over `arch/riscv/boot/Image` and `arch/riscv/kvm/kvm.ko`.
+> Note: Use `find . -name linux -type d` in buildroot to locate the linux build dir. Copy over `arch/riscv/boot/Image` and `arch/riscv/kvm/kvm.ko`.
 
 ## Full boot
 
