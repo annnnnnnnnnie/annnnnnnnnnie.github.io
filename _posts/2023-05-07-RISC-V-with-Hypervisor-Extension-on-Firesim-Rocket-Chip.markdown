@@ -60,7 +60,7 @@ firesim_rocket_h_quadcore_no_nic_l2_llc4mb_ddr3_ours:
     bit_builder_recipe: bit-builder-recipes/f1.yaml
 ```
 
-> Note: The `TARGET_CONFIG` is parsed following the syntatic rules described [here](https://docs.fires.im/en/1.16.0/Advanced-Usage/Generating-Different-Targets.html#specifying-a-target-instance).
+> Note: The `TARGET_CONFIG` is parsed [following the syntatic rules described here](https://docs.fires.im/en/1.16.0/Advanced-Usage/Generating-Different-Targets.html#specifying-a-target-instance).
 
 Then turn on build in `firesim/deploy/config_build.yaml`.
 
@@ -79,12 +79,8 @@ firesim_rocket_h_quadcore_no_nic_l2_llc4mb_ddr3_ours:
 
 Finally, specify that we want to use our built image in `firesim/deploy/config_runtime.yaml`:
 ```yaml
-...
 target_config:
-    ...
     default_hw_config: firesim_rocket_h_quadcore_no_nic_l2_llc4mb_ddr3_ours
-    ...
-...
 ```
 
 ## Use Firemarshal to Build Linux Workload and Boot Linux
@@ -107,11 +103,8 @@ $ marshal build br-base.json
 Since this workload is pre-defined, we can refer to it directly. Change the `firesim/deploy/config_runtime.yaml` accordingly:
 
 ```yaml
-...
 workload:
         workload_name: linux-uniform.json
-        ...
-...
 ```
 
 To prepare F1 instances to run simulation, we first start them:
@@ -150,10 +143,86 @@ and input `yes`.
 ## Boot Linux Hypervisor and Linux Guest
 Now we can run our custom workload, which will be based on `br-base.json`, with additional files `Image`, `lkvm-static` and `kvm.ko`.
 
-First, set firemarshal workload search path by editing ``:
+First, set firemarshal workload search path by editing `firesim/sw/firesim-software/marshal-config.yaml`:
+```yaml
+workload-dirs: ["example-workloads"]
 ```
+> Note: The [path of this config file is documented here](https://firemarshal.readthedocs.io/en/latest/marshalConfig.html#user-defined).
+
+Then we head to `firesim/sw/firesim-software/example-workloads/` and create a folder and a workload specification file for our workload:
+```
+$ mkdir linuxkvm
+$ touch linuxkvm.json
 ```
 
+We copy over the files and put it under `linuxkvm`:
+```
+$ tree linuxkvm
+linuxkvm
+├── Image
+├── kvm.ko
+├── lkvm-static
+└── run_guest.sh
+```
+
+The `run_guest.sh` is a simple shell script that boots the guest linux:
+```sh
+echo "Inserting kvm.ko"
+insmod kvm.ko
+
+echo "Starting guest"
+./lkvm-static run -m 1024 -c1 --console serial -p "console=ttyS0 earlycon" \
+    -k ./Image \
+    --debug
+```
+
+Then we define our workload in `linuxkvm.json`:
+```json
+{
+  "name" : "linuxkvm",
+  "base" : "br-base.json",
+  "files": [ ["./Image", "/root/"],
+             ["./kvm.ko", "/root/"],
+             ["./run_guest.sh", "/root/"],
+             ["./lkvm-static", "/root/"]
+           ]
+}
+```
+
+> Note: The [workload specification documentation can be found here](https://firemarshal.readthedocs.io/en/latest/workloadConfig.html).
+
+Now we can build and install the workload using firemarshal:
+```
+$ marshal build linuxkvm.json
+$ marshal install linuxkvm.json
+```
+This will make our workload available under `firesim/deploy/workloads`.
+
+> Note: `marshal launch linuxkvm.json` could have been used to run our workload in the prebuilt QEMU shipped with firesim conda environment, but this QEMU does not support the hypervisor extension. See more in the [appendix](#appendix).
+
+Now update our `firesim/deploy/config_runtime.yaml` to run `linuxkvm.json` as the workload:
+```yaml
+workload:
+    workload_name: linuxkvm.json
+    terminate_on_completion: no
+    suffix_tag: null
+```
+
+> Note: The [firesim documentation on defining custom workloads is found here](https://docs.fires.im/en/stable/Advanced-Usage/Workloads/Defining-Custom-Workloads.html).
+
+Then we can run our workload as usual:
+```
+$ firesim launchrunfarm
+$ firesim infrasetup
+$ firesim runworkload
+```
+
+`ssh` into the F1 instance and `screen -r fsim0`, we should be able to see the linux hypervisor booting, although significantly slower than on QEMU. Log in with user name `root` and run `sh run_guest.sh` to boot the guest linux.
+
+Lastly, when everything is finished, use `ctrl-d` to terminate linux guest, `poweroff` to terminate linux hypervisor and do not forget:
+```
+$ firesim terminaterunfarm
+```
 
 # References
 
