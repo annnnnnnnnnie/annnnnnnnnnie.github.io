@@ -183,8 +183,31 @@ linuxkvm
     $ make defconfig
     $ make -j $(nproc)
     ```
+    This is because that the `Image` compiled by firemarshal lacks some devices.
 
-- The `kvm.ko` is copied over from `firesim/sw/firesim-software/boards/defatul/linux/arch/riscv/kvm/kvm.ko`. This is to avoid the problem of conflicting `vermagic` of the module and the hypervisor kernel.
+- The `kvm.ko` is copied over from `firesim/sw/firesim-software/boards/defatul/linux/arch/riscv/kvm/kvm.ko`. This is to avoid the problem of conflicting `vermagic` of the module and the hypervisor kernel. Additionally, in `linux/arch/riscv/kvm/vcpu.c`, we need to comment out the csr_write_henvcfg:
+    ```c
+    static void kvm_riscv_vcpu_update_config(const unsigned long *isa)
+    {
+        u64 henvcfg = 0;
+
+        if (riscv_isa_extension_available(isa, SVPBMT))
+            henvcfg |= ENVCFG_PBMTE;
+
+        if (riscv_isa_extension_available(isa, SSTC))
+            henvcfg |= ENVCFG_STCE;
+
+        if (riscv_isa_extension_available(isa, ZICBOM))
+            henvcfg |= (ENVCFG_CBIE | ENVCFG_CBCFE);
+        
+        // Comment out the csr write
+        // csr_write(CSR_HENVCFG, henvcfg);
+    #ifdef CONFIG_32BIT
+        // csr_write(CSR_HENVCFGH, henvcfg >> 32);
+    #endif
+    }
+    ```
+    This instruction will trigger illegal instruction exception for some unknown reason (rocket chip does have this instruction defined in their source code).
 
 - The `lkvm-static` is the statically linked, cross compiled executable from last time (i.e. the `kvmtool`).
 
