@@ -165,16 +165,28 @@ linuxkvm
 └── run_guest.sh
 ```
 
-The `run_guest.sh` is a simple shell script that boots the guest linux:
-```sh
-echo "Inserting kvm.ko"
-insmod kvm.ko
+- The `run_guest.sh` is a simple shell script that boots the guest linux:
+    ```sh
+    echo "Inserting kvm.ko"
+    insmod kvm.ko
 
-echo "Starting guest"
-./lkvm-static run -m 1024 -c1 --console serial -p "console=ttyS0 earlycon" \
-    -k ./Image \
-    --debug
-```
+    echo "Starting guest"
+    ./lkvm-static run -m 1024 -c1 --console serial -p "console=ttyS0 earlycon" \
+        -k ./Image \
+        --debug
+    ```
+
+- The `Image` is compiled using a separate linux-6.2 source tree, with
+    ```
+    $ export ARCH=riscv
+    $ export CROSS_COMPILE=riscv64-unknown-linux-gnu-
+    $ make defconfig
+    $ make -j $(nproc)
+    ```
+
+- The `kvm.ko` is copied over from `firesim/sw/firesim-software/boards/defatul/linux/arch/riscv/kvm/kvm.ko`. This is to avoid the problem of conflicting `vermagic` of the module and the hypervisor kernel.
+
+- The `lkvm-static` is the statically linked, cross compiled executable from last time (i.e. the `kvmtool`).
 
 Then we define our workload in `linuxkvm.json`:
 ```json
@@ -217,7 +229,7 @@ $ firesim infrasetup
 $ firesim runworkload
 ```
 
-`ssh` into the F1 instance and `screen -r fsim0`, we should be able to see the linux hypervisor booting, although significantly slower than on QEMU. Log in with user name `root` and run `sh run_guest.sh` to boot the guest linux.
+`ssh` into the manager and then the F1 instance, and `screen -r fsim0`, we should be able to see the linux hypervisor booting, although significantly slower than on QEMU. Log in with user name `root` and run `sh run_guest.sh` to boot the guest linux.
 
 Lastly, when everything is finished, use `ctrl-d` to terminate linux guest, `poweroff` to terminate linux hypervisor and do not forget:
 ```
