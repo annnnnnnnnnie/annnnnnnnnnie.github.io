@@ -185,7 +185,7 @@ linuxkvm
     ```
     This is because that the `Image` compiled by firemarshal lacks some devices.
 
-- The `kvm.ko` is copied over from `firesim/sw/firesim-software/boards/defatul/linux/arch/riscv/kvm/kvm.ko`. This is to avoid the problem of conflicting `vermagic` of the module and the hypervisor kernel. Additionally, in `linux/arch/riscv/kvm/vcpu.c`, we need to comment out the csr_write_henvcfg:
+- The `kvm.ko` is copied over from `firesim/sw/firesim-software/boards/default/linux/arch/riscv/kvm/kvm.ko`. This is to avoid the problem of conflicting `vermagic` of the module and the hypervisor kernel. Additionally, in `linux/arch/riscv/kvm/vcpu.c`, we need to comment out the csr_write_henvcfg:
     ```c
     static void kvm_riscv_vcpu_update_config(const unsigned long *isa)
     {
