@@ -60,108 +60,18 @@ Rocket chip stores not only the gVA to hPA translation in TLB, but also the gVA 
 ## Adding AutoCounters to Rocket Chip
 Import `midas.targetutils.PerfCounter`, then use `PerfCounter.apply(UInt, LabelName, HumanReadableDescription)`. `LabelName` must be globally unique and contain no space.
 
-```
-diff --git a/src/main/scala/rocket/DCache.scala b/src/main/scala/rocket/DCache.scala
-index 0467d149a..acd972f79 100644
---- a/src/main/scala/rocket/DCache.scala
-+++ b/src/main/scala/rocket/DCache.scala
-@@ -1050,8 +1050,17 @@ class DCacheModule(outer: DCache) extends HellaCacheModule(outer) {
- 
-   // performance events
-   io.cpu.perf.acquire := edge.done(tl_out_a)
-+  val dcache_acquire = io.cpu.perf.acquire.asUInt
-+  midas.targetutils.PerfCounter.apply(dcache_acquire, "dcache_acq", "DCache Acquired")
-+
-   io.cpu.perf.release := edge.done(tl_out_c)
-+  val dcache_release = io.cpu.perf.release.asUInt
-+  midas.targetutils.PerfCounter.apply(dcache_release, "dcache_release", "DCache release")
-+
-   io.cpu.perf.grant := tl_out.d.valid && d_last
-+  val dcache_grant = io.cpu.perf.grant.asUInt
-+  midas.targetutils.PerfCounter.apply(dcache_grant, "dcache_grant", "DCache grant")
-+
-   io.cpu.perf.tlbMiss := io.ptw.req.fire()
-   io.cpu.perf.storeBufferEmptyAfterLoad := !(
-     (s1_valid && s1_write) ||
-diff --git a/src/main/scala/rocket/PTW.scala b/src/main/scala/rocket/PTW.scala
-index 7c36bdbf3..f814f629a 100644
---- a/src/main/scala/rocket/PTW.scala
-+++ b/src/main/scala/rocket/PTW.scala
-@@ -13,6 +13,7 @@ import freechips.rocketchip.tile._
- import freechips.rocketchip.tilelink._
- import freechips.rocketchip.util._
- import freechips.rocketchip.util.property
-+import midas.targetutils.PerfCounter
- 
- import scala.collection.mutable.ListBuffer
- 
-@@ -392,6 +393,9 @@ class PTW(n: Int)(implicit edge: TLEdgeOut, p: Parameters) extends CoreModule()(
-     val lcount = if (s2) aux_count else count
-     for (i <- 0 until pgLevels-1) {
-       ccover(hit && state === s_req && lcount === i.U, s"PTE_CACHE_HIT_L$i", s"PTE cache hit, level $i")
-+
-+      val pte_cache_hit = (hit && state === s_req && lcount === i.U).asUInt
-+      midas.targetutils.PerfCounter.apply(pte_cache_hit, s"pte_cache_hit_l${i}_${s2}", s"PTE cache hit, level $i")
-     }
- 
-     (hit, Mux1H(hits, data))
-@@ -404,6 +408,14 @@ class PTW(n: Int)(implicit edge: TLEdgeOut, p: Parameters) extends CoreModule()(
-   val pte_hit = RegNext(false.B)
-   io.dpath.perf.pte_miss := false.B
-   io.dpath.perf.pte_hit := pte_hit && (state === s_req) && !io.dpath.perf.l2hit
-+
-+  val l1_pte_hit = io.dpath.perf.pte_hit.asUInt
-+  midas.targetutils.PerfCounter.apply(l1_pte_hit, "l1_pte_hit", "L1 pte hit")
-+
-+  val l1_pte_miss = io.dpath.perf.pte_miss.asUInt
-+  midas.targetutils.PerfCounter.apply(l1_pte_miss, "l1_pte_miss", "L1 pte miss")
-+
-+
-   assert(!(io.dpath.perf.l2hit && (io.dpath.perf.pte_miss || io.dpath.perf.pte_hit)),
-     "PTE Cache Hit/Miss Performance Monitor Events are lower priority than L2TLB Hit event")
-   // l2_refill happens when find the leaf pte
-@@ -493,6 +505,12 @@ class PTW(n: Int)(implicit edge: TLEdgeOut, p: Parameters) extends CoreModule()(
-     val s2_hit = s2_valid && s2_hit_vec.orR
-     io.dpath.perf.l2miss := s2_valid && !(s2_hit_vec.orR)
-     io.dpath.perf.l2hit := s2_hit
-+
-+    val l2_pte_miss = io.dpath.perf.l2miss.asUInt
-+    midas.targetutils.PerfCounter.apply(l2_pte_miss, "l2_pte_miss", "L2 pte miss")
-+    val l2_pte_hit = io.dpath.perf.l2hit.asUInt
-+    midas.targetutils.PerfCounter.apply(l2_pte_hit, "l2_pte_hit", "L2 pte hit")
-+
-     when (s2_hit) {
-       l2_plru.access(r_idx, OHToUInt(s2_hit_vec))
-       assert((PopCount(s2_hit_vec) === 1.U) || s2_error, "L2 TLB multi-hit")
-@@ -638,6 +656,8 @@ class PTW(n: Int)(implicit edge: TLEdgeOut, p: Parameters) extends CoreModule()(
-     is (s_wait2) {
-       next_state := s_wait3
-       io.dpath.perf.pte_miss := count < (pgLevels-1).U
-+      val s_wait2_miss = io.dpath.perf.pte_miss.asUInt
-+      midas.targetutils.PerfCounter.apply(s_wait2_miss, "s_wait2_pte_miss", "s_wait2 pte miss")
-       when (io.mem.s2_xcpt.ae.ld) {
-         resp_ae_ptw := true.B
-         next_state := s_ready
-diff --git a/src/main/scala/rocket/TLB.scala b/src/main/scala/rocket/TLB.scala
-index 977f73819..879d02f1e 100644
---- a/src/main/scala/rocket/TLB.scala
-+++ b/src/main/scala/rocket/TLB.scala
-@@ -15,6 +15,7 @@ import freechips.rocketchip.util._
- import freechips.rocketchip.util.property
- import freechips.rocketchip.devices.debug.DebugModuleKey
- import chisel3.internal.sourceinfo.SourceInfo
-+import midas.targetutils.PerfCounter
- 
- case object PgLevels extends Field[Int](2)
- case object ASIdBits extends Field[Int](0)
-@@ -721,6 +722,9 @@ class TLB(instruction: Boolean, lgMaxSize: Int, cfg: TLBConfig)(implicit edge: T
-     }
- 
-     ccover(io.ptw.req.fire, "MISS", "TLB miss")
-+    val tlb_miss_event = io.ptw.req.fire.asUInt
-+    midas.targetutils.PerfCounter.apply(tlb_miss_event, "tlb_miss", "tlb miss")
-+
-     ccover(io.ptw.req.valid && !io.ptw.req.ready, "PTW_STALL", "TLB miss, but PTW busy")
-     ccover(state === s_wait_invalidate, "SFENCE_DURING_REFILL", "flush TLB during TLB refill")
-     ccover(sfence && !io.sfence.bits.rs1 && !io.sfence.bits.rs2, "SFENCE_ALL", "flush TLB")
-```
+## Dcache Grant, Acquire and Release
+
+What is dcache grant, dcache acquire and dcache release? (RISC-V)
+
+ChatGPT:
+
+In the context of the RISC-V architecture, the terms "dcache grant," "dcache acquire," and "dcache release" are related to the cache coherence protocol and memory synchronization operations. These terms specifically refer to the handling of cache ownership and synchronization between different cache levels.
+
+Dcache Grant: In a multi-level cache hierarchy, when a cache line is modified in one cache, it becomes the "owner" of that cache line. The dcache grant operation refers to the process of granting ownership of a cache line to a particular cache level. It typically involves transferring the ownership and associated data from one cache level to another.
+
+Dcache Acquire: The dcache acquire operation is used to acquire ownership of a cache line from a lower-level cache. When a cache level needs to read or modify a cache line that is owned by a lower-level cache, it performs the dcache acquire operation to obtain ownership of that cache line. This ensures that the cache line is up-to-date and consistent across all cache levels before performing any operations on it.
+
+Dcache Release: The dcache release operation is used to release ownership of a cache line. When a cache level has finished accessing or modifying a cache line, it releases ownership of that cache line using the dcache release operation. This allows other cache levels to acquire ownership and perform operations on the cache line as needed.
+
+These operations are part of the cache coherence protocol implemented in the RISC-V architecture to maintain data consistency across different levels of cache. They ensure that cache copies of the same data are kept coherent and synchronized, preventing data inconsistencies and ensuring correct program execution in multi-core or multi-processor systems.
