@@ -11,14 +11,14 @@ The cache can be indexed using the virtual address, and verified using the physi
 
 ## Two-Staged Address Translation
 ![2D Page Table Walk](/images/Virtual-Memory-and-Caches/2DPageTableWalk.png)
-[[3]](#3)
+[[3]](#references)
 
 ## Page Walk Caches (PWC) and Nested TLB (NTLB)
 ![PWC and TLB](/images/Virtual-Memory-and-Caches/2DPTW_Caches_NTLB.png)
-[[3]](#3)
+[[3]](#references)
 
 ## The Sv39 Page-Based 39-bit Virtual Memory System
-Rocket Chip implements the Sv39 VM scheme [[2]](#2).
+Rocket Chip implements the Sv39 VM scheme [[2]](#references).
 ![Sv39VMAddressMap](/images/Virtual-Memory-and-Caches/Sv39VMAddressMap.png)
 A page is usually 4KB and byte-addressable, so the offset is 12 bits ($2^{12} = 4096$).
 
@@ -39,10 +39,10 @@ For a 5-level page table:
 The cached value is always host physical address (hPA).
 
 ## Rocket-Chip: Two Level TLB with Extended Entries
-Rocket chip implements two level of TLB, similar to two level of caches [[1]](#1).
+Rocket chip implements two level of TLB, similar to two level of caches [[1]](#references).
 Source code at `rocket-chip/src/main/scala/rocket/PTW.scala`.
 Rocket chip caches translations. (pte_cache and s2_pte_cache).
-Rocket chip stores not only the gVA to hPA translation in TLB, but also the gVA to gPA translations [[4]](#4).
+Rocket chip stores not only the gVA to hPA translation in TLB, but also the gVA to gPA translations [[4]](#references).
 
 ![RocketChipAddressTranslation](/images/Virtual-Memory-and-Caches/RocketChipAddressTranslation.png)
 
