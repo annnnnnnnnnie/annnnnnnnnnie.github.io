@@ -24,16 +24,46 @@ The expected compiled bytes are 00008013 and 00010013. Use `riscv64-unknown-linu
 ```
 
 ## Rocket Chip Default Achitectural Parameters
-|Component|Size|Explaination|Source|Experiments|
-|---------|----|------------|------|-----------|
-|L1I|16KB|4 way set associative * 64 sets * 64B cache line size|`src/main/scala/rocket/HellaCache.scala`||
-|L1D|16KB|4 way set associative * 64 sets * 64B cache line size|`src/main/scala/rocket/HellaCache.scala`|4096 * 4B(uint_32) would fill up the cache|
-|L2Shared|512KB|8 way set associative * 1024 sets * 64B cache line size|[SiFive Rocket Chip Inclusive Cache](https://github.com/chipsalliance/rocket-chip-inclusive-cache/tree/02e002b324c0e6316234045fa739fdb9d716170d)||
-|L1ITLB|128 entries|32 way fully associative * 1 set * 4 sectors|`src/main/scala/rocket/HellaCache.scala`||
-|L1DTLB|128 entries|32 way fully associative * 1 set * 4 sectors|`src/main/scala/rocket/HellaCache.scala`||
-|L2TLB||Not instantiated|`src/main/scala/rocket/RocketCore.scala`||
-|s1 s2 pte cache level 0 1|8 entries each|Two level PWC at each stage, two stage address translation|`src/main/scala/rocket/RocketCore.scala` and `src/main/scala/rocket/PTW.scala:makePTECache`||
+|Component|Size|Explaination|Source|
+|---------|----|------------|------|
+|L1I|16KB|4 way set associative * 64 sets * 64B cache line size|`src/main/scala/rocket/HellaCache.scala`|
+|L1D|16KB|4 way set associative * 64 sets * 64B cache line size|`src/main/scala/rocket/HellaCache.scala`|
+|L2Shared|512KB|8 way set associative * 1024 sets * 64B cache line size|[SiFive Rocket Chip Inclusive Cache](https://github.com/chipsalliance/rocket-chip-inclusive-cache/tree/02e002b324c0e6316234045fa739fdb9d716170d)|
+|L1ITLB|128 entries|32 way fully associative * 1 set * 4 sectors|`src/main/scala/rocket/HellaCache.scala`|
+|L1DTLB|128 entries|32 way fully associative * 1 set * 4 sectors|`src/main/scala/rocket/HellaCache.scala`|
+|L2TLB||Not instantiated|`src/main/scala/rocket/RocketCore.scala`|
+|s1 s2 pte cache level 0 1|8 entries each|Two level PWC at each stage, two stage address translation|`src/main/scala/rocket/RocketCore.scala` and `src/main/scala/rocket/PTW.scala:makePTECache`|
 
+## Automate Result Collection
+First, change in `kvmtool/include/kvm/kvm-config.h` the `DEFAULT_SANDBOX_FILENAME` to `sandbox.sh`. Recompile `lkvm-static`.
+```
+diff --git a/include/kvm/kvm-config.h b/include/kvm/kvm-config.h
+index 368e6c7..05199dd 100644
+--- a/include/kvm/kvm-config.h
++++ b/include/kvm/kvm-config.h
+@@ -15,7 +15,7 @@
+ #define DEFAULT_GUEST_MAC      "02:15:15:15:15:15"
+ #define DEFAULT_HOST_MAC       "02:01:01:01:01:01"
+ #define DEFAULT_SCRIPT         "none"
+-#define DEFAULT_SANDBOX_FILENAME "guest/sandbox.sh"
++#define DEFAULT_SANDBOX_FILENAME "sandbox.sh"
+ 
+ #define MIN_RAM_SIZE           SZ_64M
+```
+
+Following the firemarshal documentation[[2]](#references), we make use of the `run` option to automatically run the workload for us.
+```json
+{
+  "name" : "linuxkvm",
+  "base" : "br-base.json",
+  "files": [ ["./Image", "/root/"],
+             ["./kvm.ko", "/root/"],
+             ["./linuxkvmriscv64/kvmtool/lkvm-static", "/root/"]
+           ],
+  "overlay": "./linuxkvmriscv64/overlay",
+  "run": "./linuxkvmriscv64/overlay/root/run_guest_sandbox.sh"
+}
+```
 
 ## Four Files Under `firesim/deploy`
 - `config_build_recipes.yaml`
@@ -74,7 +104,9 @@ The expected compiled bytes are 00008013 and 00010013. Use `riscv64-unknown-linu
   ```
 
 # References
-1. [Chipyard Rocket Chip Generator Microachitectual Parameters](https://chipyard.readthedocs.io/en/stable/Customization/Memory-Hierarchy.html#memory-hierarchy)
+1. [Chipyard Rocket Chip generator micro-achitectural parameters](https://chipyard.readthedocs.io/en/stable/Customization/Memory-Hierarchy.html#memory-hierarchy)
+2. [Firemarshal workload configuration options](https://firemarshal.readthedocs.io/en/latest/workloadConfig.html#configuration-options)
+3. [kvmtool man page](https://github.com/kvmtool/kvmtool/blob/master/Documentation/kvmtool.1)
 
 # Appendix 
 
