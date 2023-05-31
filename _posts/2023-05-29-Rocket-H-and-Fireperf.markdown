@@ -17,11 +17,11 @@ Put basic AutoCounters at `RockectCore.scala`, add PWC AutoCounters at `PTW.scal
 See [appendix](#appendix-one-click-patches) for git patches for these files.
 
 ## Inline Assembly for Fireperf Triggers
-The expected compiled bytes are 00008013 and 00010013. Use `riscv64-unknown-linux-gnu-objdump -S` to check.
 ```c
 #define FIRESIM_START_TRIGGER asm volatile ("addi x0, x1, 0":::"cc")
 #define FIRESIM_END_TRIGGER asm volatile ("addi x0, x2, 0":::"cc")
 ```
+The expected compiled bytes are 00008013 and 00010013. Use `riscv64-unknown-linux-gnu-objdump -S` to check.
 
 ## Rocket Chip Default Achitectural Parameters
 |Component|Size|Explaination|Source|
@@ -33,6 +33,14 @@ The expected compiled bytes are 00008013 and 00010013. Use `riscv64-unknown-linu
 |L1DTLB|128 entries|32 way fully associative * 1 set * 4 sectors|`src/main/scala/rocket/HellaCache.scala`|
 |L2TLB||Not instantiated|`src/main/scala/rocket/RocketCore.scala`|
 |s1 s2 pte cache level 0 1|8 entries each|Two level PWC at each stage, two stage address translation|`src/main/scala/rocket/RocketCore.scala` and `src/main/scala/rocket/PTW.scala:makePTECache`|
+
+## Experiment Design
+### ccbench/caches[[4]](#references)
+When runtype = 0, this will access a fixed sized array randomly, at cache boundary.
+|Parameters|Explaination|Expected Results|
+|----------|------------|----------------|
+|num_elements = 131702 (i.e. 128K)</br> run_type = 0 (random) </br> num_iterations = 300_000 (A casual choice)|L1DTLB has 128 entries, covering 128 * 4KB memory. $128 * 4KB / 4B = 128K$ elements|Baseline for L1DTLB miss count|
+|num_elements = 262144 (i.e. 256K)</br> run_type = 0 (random)|L1DTLB has 128 entries, covering 128 * 4KB memory. $128 * 4KB / 4B = 128K$ elements|Doubled L1DTLB miss count|
 
 ## Automate Result Collection
 First, change in `kvmtool/include/kvm/kvm-config.h` the `DEFAULT_SANDBOX_FILENAME` to `sandbox.sh`. Recompile `lkvm-static`.
@@ -62,6 +70,36 @@ Following the firemarshal documentation[[2]](#references), we make use of the `r
            ],
   "overlay": "./linuxkvmriscv64/overlay",
   "run": "./linuxkvmriscv64/overlay/root/run_guest_sandbox.sh"
+}
+
+```
+
+The `run_guest_sandbox.sh` is as follows:
+```
+echo "Inserting kvm.ko"
+insmod /root/kvm.ko
+
+echo "Starting sandbox"
+
+/root/lkvm-static sandbox -m 1G -c1 --console serial -p "console=ttyS0 earlycon" -k /root/Image -- sh $1
+poweroff
+# Example input for $1:
+# /host/root/mem_benches/ccbench/run_caches_guest.sh
+
+# The normal lkvm-static run instruction is 
+# /root/lkvm-static run -m 1G -c1 --console serial -p "console=ttyS0 earlycon" -k /root/Image
+```
+
+Now `marshal build` and `marshal install` the workload to `firesim/deploy/workloads`.
+
+Edit `firesim/deploy/workloads/linuxkvm.json` to include `TRACEFILE*` and `AUTOCOUNTER*` as output.
+```json
+{
+  "common_simulation_outputs": [
+    "uart_log",
+    "TRACEFILE*",
+    "AUTOCOUNTER*"
+  ]
 }
 ```
 
@@ -102,11 +140,17 @@ Following the firemarshal documentation[[2]](#references), we make use of the `r
   workload:
     workload_name: linuxkvm.json
   ```
+- `config_build.yaml`
+  ```yaml
+  agfi_to_build:
+    - firesim_rocket_h_singlecore_no_nic_l2_llc4mb_ddr3_with_dcache_tlb_counter_ptx
+  ```
 
 # References
 1. [Chipyard Rocket Chip generator micro-achitectural parameters](https://chipyard.readthedocs.io/en/stable/Customization/Memory-Hierarchy.html#memory-hierarchy)
 2. [Firemarshal workload configuration options](https://firemarshal.readthedocs.io/en/latest/workloadConfig.html#configuration-options)
 3. [kvmtool man page](https://github.com/kvmtool/kvmtool/blob/master/Documentation/kvmtool.1)
+4. [ccbench](https://github.com/ucb-bar/ccbench)
 
 # Appendix 
 
