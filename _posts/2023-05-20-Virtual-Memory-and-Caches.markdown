@@ -7,7 +7,7 @@ categories: RISC-V Virtualization
 # Concepts
 
 ## Virtually Indexed Physically Tagged Cache
-The cache can be indexed using the virtual address, and verified using the physical address when the translation is ready.
+The L1 cache 
 
 ## Two-Staged Address Translation
 ![2D Page Table Walk](/images/Virtual-Memory-and-Caches/2DPageTableWalk.png)
@@ -28,22 +28,78 @@ The PWC for gVA to gPA translation uses prefixes of gVA to skip to gPA that poin
 
 The PWC for gPA to hPA translation is the second stage, uses prefixes of gPA to skip to hPA that points to a page table.
 
-## Given a virtual address, how to make use of translation cache?
-For a 5-level page table:
-1. If the top $(n)$ bits match, then the translation result can be directly obtained (TLB).
-2. If the top $(n-9)$ bits match, then we can go to the last level of page table directly.
-3. If the top $(n-2*9)$ bits match, then we go to the second last level of page table.
-4. If the top $(n-3*9)$ bits match, thn we go to the third last level.
-5. Otherwise, use the top $(n-4*9)$ bits to index into the top most level of page table.
+## Example: Sv39 VM access
+```python
+def translate_guest_mem_access():
+  if TLB_hit:
+    return TLB_hPA
+  else:
+    return do_PTW()
 
-The cached value is always host physical address (hPA).
+def do_PTW():
+  if gPWC_1_hit:
+    gPA_of_last_level_PT = level_1_pte_gPA
+    hPA_of_last_level_PT = translate(gPA_of_last_level_PT) # 1 to 3 mem access
+    gPA = access(hPA_of_last_level_PT) # 1 access
+    hPA = translate(gPA) # 1 to 3 mem access
+    return hPA # Total 3 to 7 mem access, 2 host tranlsation
+  elif gPWC_0_hit:
+    gPA_of_second_last_level_PT = level_0_pte_gPA
+    hPA_of_second_last_level_PT = translate(gPA_of_second_last_level_PT) # 1 to 3 mem access
+    gPA_of_last_level_PT = access(hPA_of_second_last_level_PT) # 1 access
+    hPA_of_last_level_PT = translate(gPA_of_last_level_PT) # 1 to 3 mem access
+    gPA = access(hPA_of_last_level_PT) # 1 access
+    hPA = translate(gPA) # 1 to 3 mem access
+    return hPA # Total 5 to 11 mem accesses, 3 host tranlsation
+  else:
+    hPA_of_first_level_PT = translate(gPA_of_first_level_PT) # 1 to 3 mem access
+    gPA_of_second_last_level_PT = access(hPA_of_first_level_PT) # 1 access
+    hPA_of_second_last_level_PT = translate(gPA_of_second_last_level_PT) # 1 to 3 mem access
+    gPA_of_last_level_PT = access(hPA_of_second_last_level_PT) # 1 access
+    hPA_of_last_level_PT = translate(gPA_of_last_level_PT) # 1 to 3 mem access
+    gPA = access(hPA_of_last_level_PT) # 1 access
+    hPA = translate(gPA) # 1 to 3 mem access
+    return hPA # Total 7 to 15 mem accesses, 4 host tranlsation
+    # 3 * 3 + 3 + 3 = 15 (m * n + m + n)
+
+# Do 2nd stage address translation
+def translate(mem):
+  match mem:
+    case gPA:
+      if TLB_hit: 
+        # This would not happen as there is no nested TLB
+        raise error
+      elif hPWC_1_hit:
+        hPA_of_last_level_PT = level_1_pte_gPA
+        hPA_of_gPA = access(hPA_of_last_level_PT)
+        return hPA_of_gPA # 1 mem access
+      elif hPWC_0_hit:
+        hPA_of_second_last_level_PT = level_0_pte_gPA
+        hPA_of_last_level_PT = access(hPA_of_second_last_level_PT)
+        hPA_of_gPA = access(hPA_of_last_level_PT)
+        return hPA_of_gPA # 2 mem accesses
+      else:
+        hPA_of_second_last_level_PT = access(page_table)
+        hPA_of_last_level_PT = access(hPA_of_second_last_level_PT)
+        hPA_of_gPA = access(hPA_of_last_level_PT)
+        return hPA_of_gPA # 3 mem accesses
+
+def access(mem):
+  match mem:
+    case hPA:
+      return data
+    case _:
+      raise error
+
+```
 
 ## Rocket-Chip: Two Level TLB with Extended Entries
-Rocket chip implements two level of TLB, similar to two level of caches [[1]](#references).
-Source code at `rocket-chip/src/main/scala/rocket/PTW.scala`.
-Rocket chip caches translations. (pte_cache and s2_pte_cache).
-Rocket chip stores not only the gVA to hPA translation in TLB, but also the gVA to gPA translations [[4]](#references).
+Rocket chip implements two level of TLB, similar to two level of caches [[1]](#references). However, by default, the L2TLB is not instantiated.
 
+Rocket chip caches translations. (pte_cache and s2_pte_cache)(Source code at `rocket-chip/src/main/scala/rocket/PTW.scala`).
+Rocket chip stores not only the gVA to hPA translation in TLB, but also the gVA to gPA translations [[4]](#references). This might seem strange.
+
+For non-virtualized setting, the address translation goes as follows.
 ![RocketChipAddressTranslation](/images/Virtual-Memory-and-Caches/RocketChipAddressTranslation.png)
 
 # References:

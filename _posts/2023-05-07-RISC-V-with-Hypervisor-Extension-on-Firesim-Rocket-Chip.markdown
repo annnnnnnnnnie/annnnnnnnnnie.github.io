@@ -29,7 +29,7 @@ To build the FPGA image for Rocket Chip, we first need to specify a RocketConfig
 First, specify a rocket chip config that has h-extension
 Append to `firesim/target-design/chipyard/generators/chipyard/src/main/scala/config/RocketConfigs.scala`:
 ```scala
-class QuadRocketHypConfig extends Config(
+class QuadRocketHyperviosrConfig extends Config(
 new freechips.rocketchip.subsystem.WithHypervisor ++
 new QuadRocketConfig)
 ```
@@ -38,18 +38,20 @@ new QuadRocketConfig)
 
 Then, define FPGA config at `firesim/target-design/chipyard/generators/firechip/src/main/scala/TargetConfigs.scala`:
 ```scala
-class FireSimQuadRocketHypConfig extends Config(
+class FireSimQuadRocketHypervisorConfig extends Config(
 new WithDefaultFireSimBridges ++
 new WithDefaultMemModel ++
 new WithFireSimConfigTweaks ++
-new chipyard.QuadRocketHypConfig)
+new chipyard.QuadRocketHyperviosrConfig)
 ```
+
+> Note: You can edit `firesim/target-design/chipyard/generators/firechip/src/main/scala/TargetConfigs.scala` to change the configs for the SoC peripherals. For example, you can increase the memory size from 16GB to 32GB.
 
 Then add build receipe to `firesim/deploy/config_build_recipes.yaml`:
 ```yaml
 firesim_rocket_h_quadcore_no_nic_l2_llc4mb_ddr3_ours:
     DESIGN: FireSim
-    TARGET_CONFIG: FireSimQuadRocketHypConfig
+    TARGET_CONFIG: FireSimQuadRocketHypervisorConfig
     PLATFORM_CONFIG: BaseF1Config
     deploy_triplet: null
     platform_config_args:
@@ -168,10 +170,10 @@ linuxkvm
 - The `run_guest.sh` is a simple shell script that boots the guest linux:
     ```sh
     echo "Inserting kvm.ko"
-    insmod kvm.ko
+    insmod /root/kvm.ko
 
     echo "Starting guest"
-    ./lkvm-static run -m 1024 -c1 --console serial -p "console=ttyS0 earlycon" \
+    /root/lkvm-static run -m 1G -c1 --console serial -p "console=ttyS0 earlycon" \
         -k ./Image \
         --debug
     ```
@@ -207,7 +209,7 @@ linuxkvm
     #endif
     }
     ```
-    This instruction will trigger illegal instruction exception for some unknown reason (rocket chip does have this instruction defined in their source code).
+    This instruction will trigger illegal instruction exception for some unknown reason (rocket chip however does have this instruction defined in their source code).
 
 - The `lkvm-static` is the statically linked, cross compiled executable from last time (i.e. the `kvmtool`).
 

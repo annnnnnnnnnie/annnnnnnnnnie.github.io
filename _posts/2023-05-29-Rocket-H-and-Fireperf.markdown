@@ -1,8 +1,15 @@
 ---
 layout: post
-title: "Use Fireperf to Profile Rocket Chip with Hypervisor Extension"
-categories: RISC-V Virtualization Fireperf
+title: "Use FirePerf to Profile Rocket Chip with Hypervisor Extension"
+categories: RISC-V Virtualization FirePerf
 ---
+
+# Background
+## FirePerf
+
+
+
+# Step by step
 
 ## Compile `kvm.ko` and Guest Kernel Image
 Remember to comment out `csr_write(henvcfg)`.
@@ -12,7 +19,8 @@ Follow the other post.
 
 ## Setup Rocket Chip with Hypervisor Extension and AutoCounters
 ### Build Single Core Rocket Chip with H-Extension and AutoCounters
-Put basic AutoCounters at `RockectCore.scala`, add PWC AutoCounters at `PTW.scala`.
+Put basic AutoCounters in `RockectCore.scala`, add PWC AutoCounters in `PTW.scala`.
+To add a counter, first `import midas.targetutils.PerfCounter`, then look out for `ccover` and `cover` functions, which highlights interesting signals that could be counted.
 
 See [appendix](#appendix-one-click-patches) for git patches for these files.
 
@@ -23,24 +31,29 @@ See [appendix](#appendix-one-click-patches) for git patches for these files.
 ```
 The expected compiled bytes are 00008013 and 00010013. Use `riscv64-unknown-linux-gnu-objdump -S` to check.
 
-## Rocket Chip Default Achitectural Parameters
-|Component|Size|Explaination|Source|
-|---------|----|------------|------|
-|L1I|16KB|4 way set associative * 64 sets * 64B cache line size|`src/main/scala/rocket/HellaCache.scala`|
-|L1D|16KB|4 way set associative * 64 sets * 64B cache line size|`src/main/scala/rocket/HellaCache.scala`|
-|L2Shared|512KB|8 way set associative * 1024 sets * 64B cache line size|[SiFive Rocket Chip Inclusive Cache](https://github.com/chipsalliance/rocket-chip-inclusive-cache/tree/02e002b324c0e6316234045fa739fdb9d716170d)|
-|L1ITLB|128 entries|32 way fully associative * 1 set * 4 sectors|`src/main/scala/rocket/HellaCache.scala`|
-|L1DTLB|128 entries|32 way fully associative * 1 set * 4 sectors|`src/main/scala/rocket/HellaCache.scala`|
-|L2TLB||Not instantiated|`src/main/scala/rocket/RocketCore.scala`|
-|s1 s2 pte cache level 0 1|8 entries each|Two level PWC at each stage, two stage address translation|`src/main/scala/rocket/RocketCore.scala` and `src/main/scala/rocket/PTW.scala:makePTECache`|
+## Rocket Chip Default Architectural Parameters
+|Component|Size|Explaination|Source|Coverage|
+|---------|----|------------|------|--------|
+|L1I|16KB|4 way set associative * 64 sets * 64B cache line size|`src/main/scala/rocket/HellaCache.scala`| 16KB |
+|L1D|16KB|4 way set associative * 64 sets * 64B cache line size|`src/main/scala/rocket/HellaCache.scala`| 16KB |
+|L2Shared|512KB|8 way set associative * 1024 sets * 64B cache line size|[SiFive Rocket Chip Inclusive Cache](https://github.com/chipsalliance/rocket-chip-inclusive-cache/tree/02e002b324c0e6316234045fa739fdb9d716170d)| 512KB |
+|L1ITLB|32 entries|32 way fully associative * 1 set |`src/main/scala/rocket/HellaCache.scala`| 32 * 4KB = 128KB |
+|L1DTLB|32 entries|32 way fully associative * 1 set |`src/main/scala/rocket/HellaCache.scala`| 32 * 4KB = 128KB |
+|L2TLB||Not instantiated|`src/main/scala/rocket/RocketCore.scala`| - |
+|s1 s2 pte cache level 0 1|8 entries each|Two level PWC at each stage, two stage address translation|`src/main/scala/rocket/RocketCore.scala` and `src/main/scala/rocket/PTW.scala:makePTECache`| level 1: 12 + 9 bits -> 2^21 = 2MB * 8 entries = 16MB </br> level 0: 12 + 9 + 9 bits -> 2^30 = 1GB * 8 = 8GB |
 
 ## Experiment Design
 ### ccbench/caches[[4]](#references)
-When runtype = 0, this will access a fixed sized array randomly, at cache boundary.
-|Parameters|Explaination|Expected Results|
-|----------|------------|----------------|
-|num_elements = 131702 (i.e. 128K)</br> run_type = 0 (random) </br> num_iterations = 300_000 (A casual choice)|L1DTLB has 128 entries, covering 128 * 4KB memory. $128 * 4KB / 4B = 128K$ elements|Baseline for L1DTLB miss count|
-|num_elements = 262144 (i.e. 256K)</br> run_type = 0 (random)|L1DTLB has 128 entries, covering 128 * 4KB memory. $128 * 4KB / 4B = 128K$ elements|Doubled L1DTLB miss count|
+$(num_elem) uint32_t in a contiguous array.
+When runType = 0, this will access a fixed sized array randomly, at cache boundary. Otherwise, the array will be accessed in a strided way, with stride = runType.
+
+| num_element | array size | remark                                                                               | how to verify                                                         |
+|-------------|------------|--------------------------------------------------------------------------------------|-----------------------------------------------------------------------|
+| 4K          | 16KB       |     L1D cache size = 16KB                                                                | expecting dcache misses to be low for <4K and high for >4K (3e5)      |
+| 32K         | 128KB      |     L1D TLB coverage = 32 entries * 4KB each = 128KB                                    | expecting DTLB misses to be low for <32K and high for >32K            |
+| 128K        | 512KB      |     L2 Shared cache size = 512KB                                                        | expecting execution time to increase for 128K                         |
+| 4M          | 16MB       |     gPWC_1 coverage = 8 entries * 2^21 = 8 * 2MB = 16MB<br/> 2 more stage 2 translations | expecting gPWC_1 hit to be low for >4M (However this is not observed) |
+| -           | -          |     gPWC_0 coverage = 8 entries * 2^30 = 8 * 1GB = 8GB<br/> 3 more stage 2 translations | this is greater than the maximum size of problems we investigate      |
 
 ## Automate Result Collection
 First, change in `kvmtool/include/kvm/kvm-config.h` the `DEFAULT_SANDBOX_FILENAME` to `sandbox.sh`. Recompile `lkvm-static`.
@@ -79,15 +92,39 @@ The `run_guest_sandbox.sh` is as follows:
 echo "Inserting kvm.ko"
 insmod /root/kvm.ko
 
+cat /root/$1
+
 echo "Starting sandbox"
 
-/root/lkvm-static sandbox -m 1G -c1 --console serial -p "console=ttyS0 earlycon" -k /root/Image -- sh $1
+/root/lkvm-static sandbox -m 1G -c1 --console serial -p "console=ttyS0 earlycon" -k /root/Image -- sh /host/root/$1
 poweroff
 # Example input for $1:
-# /host/root/mem_benches/ccbench/run_caches_guest.sh
+# mem_benches/ccbench/run_caches_guest.sh
 
 # The normal lkvm-static run instruction is 
 # /root/lkvm-static run -m 1G -c1 --console serial -p "console=ttyS0 earlycon" -k /root/Image
+```
+
+A sample `run_caches_guest.sh` may look something like this:
+```
+BASEDIR=$(dirname "$0")
+
+numIterations=300000
+runType=0
+
+for appSizeArg in 67108864 268435456 1073741824 2147483648
+do 
+  $BASEDIR/caches $appSizeArg $numIterations $runType
+  sleep 10
+done
+
+runType=16
+for appSizeArg in 67108864 268435456 1073741824 2147483648
+do 
+  $BASEDIR/caches $appSizeArg $numIterations $runType
+  sleep 10
+done
+
 ```
 
 Now `marshal build` and `marshal install` the workload to `firesim/deploy/workloads`.
@@ -139,6 +176,7 @@ Edit `firesim/deploy/workloads/linuxkvm.json` to include `TRACEFILE*` and `AUTOC
     read_rate: 100
   workload:
     workload_name: linuxkvm.json
+    terminate_on_completion: yes # Choose yes to automatically shutdown the f1 instances.
   ```
 - `config_build.yaml`
   ```yaml
@@ -147,7 +185,7 @@ Edit `firesim/deploy/workloads/linuxkvm.json` to include `TRACEFILE*` and `AUTOC
   ```
 
 # References
-1. [Chipyard Rocket Chip generator micro-achitectural parameters](https://chipyard.readthedocs.io/en/stable/Customization/Memory-Hierarchy.html#memory-hierarchy)
+1. [Chipyard Rocket Chip generator micro-architectural parameters](https://chipyard.readthedocs.io/en/stable/Customization/Memory-Hierarchy.html#memory-hierarchy)
 2. [Firemarshal workload configuration options](https://firemarshal.readthedocs.io/en/latest/workloadConfig.html#configuration-options)
 3. [kvmtool man page](https://github.com/kvmtool/kvmtool/blob/master/Documentation/kvmtool.1)
 4. [ccbench](https://github.com/ucb-bar/ccbench)

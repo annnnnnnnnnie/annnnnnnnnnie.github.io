@@ -1,0 +1,61 @@
+diff --git a/src/main/scala/rocket/PTW.scala b/src/main/scala/rocket/PTW.scala
+index 717ef33a4..103875cfb 100644
+--- a/src/main/scala/rocket/PTW.scala
++++ b/src/main/scala/rocket/PTW.scala
+@@ -13,6 +13,7 @@ import freechips.rocketchip.tile._
+ import freechips.rocketchip.tilelink._
+ import freechips.rocketchip.util._
+ import freechips.rocketchip.util.property
++import midas.targetutils.PerfCounter
+ 
+ import scala.collection.mutable.ListBuffer
+ 
+@@ -392,6 +393,10 @@ class PTW(n: Int)(implicit edge: TLEdgeOut, p: Parameters) extends CoreModule()(
+     val lcount = if (s2) aux_count else count
+     for (i <- 0 until pgLevels-1) {
+       ccover(hit && state === s_req && lcount === i.U, s"PTE_CACHE_HIT_L$i", s"PTE cache hit, level $i")
++      
++      val pte_cache_hit = (hit && state === s_req && lcount === i.U).asUInt
++      val stage_name = if (s2) "guest" else "host"
++      PerfCounter.apply(pte_cache_hit, s"pte_cache_hit_l${i}_${s2}", s"PTE cache hit, level ${i}, on ${stage_name} translation")
+     }
+ 
+     (hit, Mux1H(hits, data))
+diff --git a/src/main/scala/rocket/RocketCore.scala b/src/main/scala/rocket/RocketCore.scala
+index 1351a8086..75acf9c50 100644
+--- a/src/main/scala/rocket/RocketCore.scala
++++ b/src/main/scala/rocket/RocketCore.scala
+@@ -12,6 +12,7 @@ import freechips.rocketchip.util._
+ import freechips.rocketchip.util.property
+ import freechips.rocketchip.scie._
+ import scala.collection.mutable.ArrayBuffer
++import midas.targetutils.PerfCounter
+ 
+ case class RocketCoreParams(
+   bootFreqHz: BigInt = 0,
+@@ -987,6 +988,25 @@ class Rocket(tile: RocketTile)(implicit p: Parameters) extends CoreModule()(p)
+   val icache_blocked = !(io.imem.resp.valid || RegNext(io.imem.resp.valid))
+   csr.io.counters foreach { c => c.inc := RegNext(perfEvents.evaluate(c.eventSel)) }
+ 
++  // Autocounter perf events
++  val cpu_mem_load = (id_ctrl.mem && id_ctrl.mem_cmd === M_XRD && !id_ctrl.fp).asUInt
++  val cpu_mem_store = (id_ctrl.mem && id_ctrl.mem_cmd === M_XWR && !id_ctrl.fp).asUInt
++  val cpu_dcache_miss = (io.dmem.perf.acquire).asUInt
++  val cpu_dcache_release = (io.dmem.perf.release).asUInt
++  val cpu_dtlb_miss = (io.dmem.perf.tlbMiss).asUInt
++  val cpu_l2_tlb_miss = (io.ptw.perf.l2miss).asUInt
++  val cpu_ptw_pte_hit = (io.ptw.perf.pte_hit).asUInt
++  val cpu_ptw_pte_miss = (io.ptw.perf.pte_miss).asUInt
++
++  PerfCounter.apply(cpu_mem_load, "cpu_mem_load", "CPU main memory load")
++  PerfCounter.apply(cpu_mem_store, "cpu_mem_store", "CPU main memory store")
++  PerfCounter.apply(cpu_dcache_miss, "cpu_dcache_miss", "CPU dcache miss")
++  PerfCounter.apply(cpu_dcache_release, "cpu_dcache_release", "CPU dcache release")
++  PerfCounter.apply(cpu_dtlb_miss, "cpu_dtlb_miss", "CPU dtlb miss")
++  PerfCounter.apply(cpu_l2_tlb_miss, "cpu_l2_tlb_miss", "CPU shared l2 tlb miss")
++  PerfCounter.apply(cpu_ptw_pte_hit, "cpu_ptw_pte_hit", "CPU PTW any pte hit")
++  PerfCounter.apply(cpu_ptw_pte_miss, "cpu_ptw_pte_miss", "CPU PTW all pte miss")
++
+   val coreMonitorBundle = Wire(new CoreMonitorBundle(xLen, fLen))
+ 
+   coreMonitorBundle.clock := clock

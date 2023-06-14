@@ -154,7 +154,14 @@ Then clone and build kvmtool
 ```
 $ git clone https://git.kernel.org/pub/scm/linux/kernel/git/will/kvmtool.git
 ```
+Change `kvmtool/include/kvm/kvm-config.h` to put the sandbox scripts not inside a folder, in order to avoid permission issues when running `lkvm-static sandbox`.
 
+```
+- #define DEFAULT_SANDBOX_FILENAME "guest/sandbox.sh"
++ #define DEFAULT_SANDBOX_FILENAME "sandbox.sh"
+```
+
+Build `lkvm-static`.
 ```
 $ export ARCH=riscv
 $ export CROSS_COMPILE=riscv64-unknown-linux-gnu-
