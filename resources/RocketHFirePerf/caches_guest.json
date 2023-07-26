@@ -1,0 +1,5 @@
+{
+  "name" : "caches_guest",
+  "base" : "linuxkvm.json",
+  "run": "../linuxkvm/linuxkvmriscv64/overlay/root/run_guest_sandbox.sh mem_benches/ccbench/run_caches.sh" 
+}

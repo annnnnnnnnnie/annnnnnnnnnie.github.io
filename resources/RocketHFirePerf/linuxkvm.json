@@ -1,0 +1,9 @@
+{
+  "name" : "linuxkvm",
+  "base" : "br-base.json",
+  "files": [ ["./Image", "/root/"],
+             ["./kvm.ko", "/root/"],
+             ["./linuxkvmriscv64/kvmtool/lkvm-static", "/root/"]
+           ],
+  "overlay": "./linuxkvmriscv64/overlay"
+}
